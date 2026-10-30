@@ -79,7 +79,23 @@ export function GenericSetup(props: {
       </PanelSectionRow>
       {hits?.length === 0 && (
         <PanelSectionRow>
-          <Field label="No match">Try a shorter name.</Field>
+          <Field label="No match">
+            Try a shorter name, or type the name from the game's
+            nexusmods.com address (nexusmods.com/hollowknight → hollowknight).
+          </Field>
+        </PanelSectionRow>
+      )}
+      {hits !== undefined && /^[a-z0-9]+$/.test(query.trim()) && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() =>
+              setNexus({ domain: query.trim(), name: query.trim(), mods: 0 })
+            }
+          >
+            {nexus?.domain === query.trim() ? "✓ " : ""}
+            Use nexusmods.com/{query.trim()}
+          </ButtonItem>
         </PanelSectionRow>
       )}
       {hits?.map((g) => (

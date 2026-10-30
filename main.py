@@ -7558,6 +7558,30 @@ async def _install_generic(
     return {"ok": True, "folder": record_key}
 
 
+_ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7"}
+
+
+def _game_words(text: str) -> set:
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return {_ROMAN.get(w, w) for w in words if w not in ("the", "of", "a")}
+
+
+def _rank_games(games: list, query: str, limit: int = 15) -> list:
+    """Every query word matching first, then most words matching. Steam
+    names carry marks and numerals Nexus drops ("DARK SOULS™ III")."""
+    want = _game_words(query)
+    if not want:
+        return []
+    scored = []
+    for g in games:
+        have = _game_words(g["name"]) | {g["domain"].lower()}
+        hit = sum(1 for w in want if w in have or any(h.startswith(w) for h in have))
+        if hit:
+            scored.append((hit == len(want), hit, g["mods"], g))
+    scored.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
+    return [t[3] for t in scored[:limit]]
+
+
 def _appmanifest_installdir(app_id: int) -> str:
     """steamapps/common/<installdir> name for any installed Steam app."""
     path = _find_in_libraries(f"appmanifest_{int(app_id)}.acf")
@@ -20012,33 +20036,33 @@ query Link($slug: String!, $domainName: String!) {
     _NEXUS_GAMES: list = []
 
     async def search_nexus_games(self, query: str) -> dict:
-        """Nexus games whose name contains every word of the query."""
+        """Nexus games by name. The catalogue (~3k games) is paged in once
+        over v2 GraphQL - the API the browser already uses on device - and
+        matched here, so no filter syntax has to be guessed."""
         if not Plugin._NEXUS_GAMES:
             api_key = _load_settings().get("api_key") or ""
+            games = []
             try:
-                session = await _http_session()
-                async with session.get(
-                    f"{NEXUS_API_BASE}/v1/games.json",
-                    headers=_api_headers(api_key),
-                    timeout=aiohttp.ClientTimeout(total=30),
-                ) as resp:
-                    if resp.status != 200:
-                        return {"ok": False, "error": f"HTTP {resp.status}"}
-                    Plugin._NEXUS_GAMES = [
-                        {"domain": g.get("domain_name"), "name": g.get("name"),
-                         "mods": g.get("mods") or 0}
-                        for g in await resp.json()
-                        if g.get("domain_name") and g.get("name")
+                for page in range(60):  # ponytail: 6000-game ceiling
+                    data = await _gql_query(
+                        "{ games(count: 100, offset: %d) { nodes "
+                        "{ name domainName modCount } } }" % (page * 100),
+                        api_key,
+                    )
+                    nodes = ((data or {}).get("games") or {}).get("nodes") or []
+                    games += [
+                        {"domain": g["domainName"], "name": g["name"],
+                         "mods": g.get("modCount") or 0}
+                        for g in nodes if g.get("domainName") and g.get("name")
                     ]
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-        words = re.findall(r"[a-z0-9]+", (query or "").lower())
-        hits = [
-            g for g in Plugin._NEXUS_GAMES
-            if all(w in re.sub(r"[^a-z0-9 ]", "", g["name"].lower()) for w in words)
-        ]
-        hits.sort(key=lambda g: -g["mods"])
-        return {"ok": True, "games": hits[:15]}
+                    if len(nodes) < 100:
+                        break
+            except (RuntimeError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+                decky.logger.warning(f"nexus games list failed: {e}")
+                return {"ok": False, "error": f"Game list failed: {e}"}
+            decky.logger.info(f"nexus games list: {len(games)} games")
+            Plugin._NEXUS_GAMES = games
+        return {"ok": True, "games": _rank_games(Plugin._NEXUS_GAMES, query)}
 
     # ---- Debugging -----------------------------------------------------------
 

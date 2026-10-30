@@ -26243,3 +26243,22 @@ class TestGenericGame(unittest.TestCase):
         self.assertEqual(self.read("Paks", "~mods", "y.pak"), "Y")
         bad = self._install("Bad", {"z": "Z"}, "../escape")
         self.assertFalse(bad["ok"])
+
+
+class TestRankGames(unittest.TestCase):
+    GAMES = [
+        {"domain": "darksouls3", "name": "Dark Souls 3", "mods": 5000},
+        {"domain": "darksouls", "name": "Dark Souls", "mods": 9000},
+        {"domain": "hollowknightsilksong", "name": "Hollow Knight Silksong", "mods": 50},
+        {"domain": "hollowknight", "name": "Hollow Knight", "mods": 3000},
+    ]
+
+    def names(self, q):
+        return [g["domain"] for g in main._rank_games(self.GAMES, q)]
+
+    def test_steam_names_find_the_nexus_game(self):
+        self.assertEqual(self.names("DARK SOULS™ III")[0], "darksouls3")
+        self.assertEqual(self.names("Hollow Knight: Silksong")[0],
+                         "hollowknightsilksong")
+        self.assertEqual(self.names("hollow")[0], "hollowknight")
+        self.assertEqual(self.names(""), [])
