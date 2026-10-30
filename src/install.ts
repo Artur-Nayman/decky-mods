@@ -15,7 +15,11 @@ import {
   prepareModFile,
   matchFileToGame,
   getGameBinaryVersion,
+  getAuthStatus,
+  getNxmQueue,
+  registerNxmHandler,
 } from "./api";
+import { Navigation } from "@decky/ui";
 import { SupportedGame, modeParams, stalenessExemptModIds } from "./games";
 import { nameDownload } from "./state";
 import { toaster } from "@decky/api";
@@ -113,12 +117,55 @@ export async function installPinned(
   );
 }
 
+// ponytail: premium cached per session; signing in/out mid-session needs a reload.
+let premium: Promise<boolean> | undefined;
+const isPremium = () =>
+  (premium ??= getAuthStatus()
+    .then((a) => !!a.is_premium)
+    .catch(() => true)); // unknown: try the Premium path, its error is clearer
+
+/** Free accounts: the user taps "Mod Manager Download" on the real page and
+ * the website mints a one-file key in an nxm:// link, which the relay queues.
+ * Polls for that exact file; null after 3 minutes. */
+export async function waitForFreeDownloadKey(
+  domain: string,
+  modId: number,
+  fileId: number
+): Promise<{ key: string; expires: string } | null> {
+  await registerNxmHandler();
+  await getNxmQueue(true); // stale links from earlier taps
+  Navigation.NavigateToExternalWeb(
+    `https://www.nexusmods.com/${domain}/mods/${modId}?tab=files&file_id=${fileId}`
+  );
+  toaster.toast({
+    title: "Tap \"Mod Manager Download\"",
+    body: "Free account: the download starts once you tap it on the page.",
+  });
+  // ponytail: 1.5s polling of a file; inotify if this ever matters
+  for (const end = Date.now() + 180_000; Date.now() < end; ) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const hit = (await getNxmQueue(false)).entries?.find(
+      (e) =>
+        e.game_domain === domain &&
+        e.mod_id === modId &&
+        e.file_id === fileId &&
+        e.key
+    );
+    if (hit) {
+      await getNxmQueue(true);
+      toaster.toast({ title: "Got it", body: "You can close the browser." });
+      return hit;
+    }
+  }
+  return null;
+}
+
 /** The ONE place that decides how a mod gets installed for a given game.
  *
  * Exported so pages call this instead of the api underneath it. The mod page
  * once duplicated this branch and My Mods skipped it entirely, and both times
  * Battlefront II quietly took the folder path. */
-export function installModWith(
+export async function installModWith(
   game: SupportedGame,
   modId: number,
   fileId: number,
@@ -150,6 +197,19 @@ export function installModWith(
     );
   }
 
+  let dl = { key: "", expires: "" };
+  // ponytail: asks even when the archive is already cached; skip-on-cache if that annoys
+  if (!(await isPremium())) {
+    const got = await waitForFreeDownloadKey(game.nexusDomain, modId, fileId);
+    if (!got) {
+      return {
+        ok: false,
+        error: "No download link arrived from the Nexus Mods page.",
+      };
+    }
+    dl = got;
+  }
+
   return installMod(
     game.nexusDomain,
     modId,
@@ -159,8 +219,8 @@ export function installModWith(
     version,
     game.installDirName,
     game.modsSubdir,
-    "",
-    "",
+    dl.key,
+    dl.expires,
     ...modeParams(game),
     payloadChoice,
     game.ue4ss?.modsSubdir ?? "",

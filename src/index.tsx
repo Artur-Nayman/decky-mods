@@ -4338,16 +4338,12 @@ function AccountSection() {
             {auth.name} ({auth.is_premium ? "Premium" : "Free"})
           </Field>
         </PanelSectionRow>
-        {/* Free accounts are not supported (decision 2026-07-24): mod
-            downloads use the Premium download API. Browsing still works,
-            so stay signed in but say why installs will fail. */}
         {!auth.is_premium && (
           <PanelSectionRow>
-            <Field label="⚠ Premium required">
-              Nothing will install on a free account. Downloading mods needs
-              Nexus Mods Premium: free accounts can only download through the
-              website in a browser, which cannot be done from Gaming Mode.
-              Browsing here works fine.
+            <Field label="Free account">
+              Each install opens the mod's Nexus page: tap "Mod Manager
+              Download" there and the plugin takes it from that tap. Premium
+              downloads skip the page and are faster.
             </Field>
           </PanelSectionRow>
         )}
@@ -4385,7 +4381,7 @@ function AccountSection() {
       <PanelSectionRow>
         <TextField
           label="Personal API key"
-          description="nexusmods.com, your profile picture, Site preferences, API Keys, then scroll to the bottom. A Nexus Mods Premium account is required for downloads."
+          description="nexusmods.com, your profile picture, Site preferences, API Keys, then scroll to the bottom. Free accounts work with one tap per download on the mod's page."
           bIsPassword={true}
           value={draft}
           onChange={(e) => setDraft(e?.target?.value ?? "")}
