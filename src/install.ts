@@ -218,7 +218,9 @@ export async function installModWith(
     modName,
     version,
     game.installDirName,
-    game.modsSubdir,
+    // Generic games: the real target for the install only; everything else
+    // gets modsSubdir, a folder that never exists (see GENERIC_NO_SCAN).
+    game.installMode === "generic" ? game.genericTarget ?? "" : game.modsSubdir,
     dl.key,
     dl.expires,
     ...modeParams(game),

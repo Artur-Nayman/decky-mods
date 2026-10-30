@@ -26178,3 +26178,68 @@ class TestRdr2RoutingFromCollections(TestRdr2Routing):
                  "lml/Hat_Hair_Fix/Abe_Hat_Hair_Fix/Hat_Hair/a.ymt"]
         got, _err = self._route(files, name="Hat Hair Fix")
         self.assertEqual(got, sorted(files))
+
+
+class TestGenericGame(unittest.TestCase):
+    """A user-configured game: files merge into the chosen folder, replaced
+    game files are backed up first and come back on uninstall."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(dir=TEST_ROOT)
+        self.game = os.path.join(self.root, "game")
+        os.makedirs(os.path.join(self.game, "Paks"))
+        os.makedirs(os.path.join(self.game, "BepInEx"))
+        with open(os.path.join(self.game, "Paks", "base.pak"), "w") as f:
+            f.write("ORIGINAL")
+
+    def tearDown(self):
+        settings = main._load_settings()
+        settings.get("installed", {}).pop("generictest", None)
+        main._save_settings(settings)
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _scratch(self, files):
+        scratch = tempfile.mkdtemp(dir=self.root)
+        for rel, body in files.items():
+            p = os.path.join(scratch, *rel.split("/"))
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as f:
+                f.write(body)
+        return scratch
+
+    def _install(self, name, files, target=""):
+        return run(main._install_generic(
+            self._scratch(files), os.path.join(self.root, "none.zip"),
+            self.game, target, "generictest", 1, 2, "f.zip", name, "1",
+            "", "", ""))
+
+    def read(self, *parts):
+        with open(os.path.join(self.game, *parts)) as f:
+            return f.read()
+
+    def test_wrapper_stripped_replaced_file_restored_on_uninstall(self):
+        r = self._install("Mod A", {"Mod A/Paks/base.pak": "MOD",
+                                    "Mod A/Paks/extra.pak": "NEW"})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(self.read("Paks", "base.pak"), "MOD")
+        self.assertEqual(self.read("Paks", "extra.pak"), "NEW")
+        settings = main._load_settings()
+        self.assertTrue(main._remove_files_record(
+            "generictest", r["folder"], self.game, settings))
+        self.assertEqual(self.read("Paks", "base.pak"), "ORIGINAL")
+        self.assertFalse(os.path.exists(
+            os.path.join(self.game, "Paks", "extra.pak")))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.game, "Paks", "base.pak" + main.MONO_BACKUP_SUFFIX)))
+
+    def test_folder_the_game_already_has_is_kept(self):
+        r = self._install("Plug", {"BepInEx/plugins/x.dll": "DLL"})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(self.read("BepInEx", "plugins", "x.dll"), "DLL")
+
+    def test_target_subfolder_and_bad_target(self):
+        r = self._install("Sub", {"y.pak": "Y"}, "Paks/~mods")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(self.read("Paks", "~mods", "y.pak"), "Y")
+        bad = self._install("Bad", {"z": "Z"}, "../escape")
+        self.assertFalse(bad["ok"])

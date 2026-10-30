@@ -139,6 +139,10 @@ export interface SupportedGame {
   installDirName: string;
   /** Where drop-in mods live, relative to the install dir */
   modsSubdir: string;
+  /** Generic games only: the folder mods merge into, relative to the
+   * install dir ("" = the game folder). modsSubdir is a folder that never
+   * exists, so folder-mode scans and sweeps cannot touch the game's own. */
+  genericTarget?: string;
   /** Game keeps separate save files for modded and unmodded play */
   moddedSaveWarning: boolean;
   /** Process name (comm) used to detect the game is running */
@@ -2056,8 +2060,14 @@ export function modeParams(
 }
 
 export function getSupportedGame(appId: number | undefined): SupportedGame | undefined {
-  return appId === undefined ? undefined : SUPPORTED_GAMES[appId];
+  return appId === undefined
+    ? undefined
+    : SUPPORTED_GAMES[appId] ?? customGames()[appId];
 }
+
+export { customGames, saveCustomGame, removeCustomGame, GENERIC_NO_SCAN } from "./customGames";
+
+import { customGames } from "./customGames";
 
 // v1 is single-game: the full-screen browser falls back to StS2 when no
 // supported game is running.

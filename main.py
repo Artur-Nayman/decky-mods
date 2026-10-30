@@ -7442,6 +7442,136 @@ def _safe_rel_path(rel: str) -> bool:
     return all(p not in ("", ".", "..") for p in parts)
 
 
+# ---- Generic games (user-configured, no per-game rules) ----------------------
+# A game the plugin has no config for: the user picks the Nexus game and a
+# target folder, and every mod's files are merged there. Recorded as a
+# game-root "files" record (target ".") so uninstall, toggle and reset reuse
+# the Shadow of Mordor machinery, including putting back any file the mod
+# replaced (MONO_BACKUP_SUFFIX copies, made before the first write).
+
+
+def _generic_payload_root(scratch: str, dest: str) -> str:
+    """Strip one wrapper folder ("ModName/...") unless the target already
+    has a folder of that name, which means the archive is laid out for it
+    ("BepInEx/plugins/x.dll" into a game that has BepInEx/)."""
+    # ponytail: one heuristic; an archive laid out for another folder lands wrong
+    entries = [e for e in os.listdir(scratch) if e != "__MACOSX"]
+    if len(entries) != 1 or not os.path.isdir(os.path.join(scratch, entries[0])):
+        return scratch
+    try:
+        existing = {e.lower() for e in os.listdir(dest)}
+    except OSError:
+        existing = set()
+    if entries[0].lower() in existing:
+        return scratch
+    return os.path.join(scratch, entries[0])
+
+
+def _generic_merge(payload: str, install_path: str, target: str) -> tuple:
+    """Move every payload file into install_path/target. Returns
+    (files, backed_up, error) with paths relative to the game root. Any
+    file that already exists is copied aside first; on a failed backup
+    nothing has been written yet."""
+    plan = []
+    for root, _dirs, names in os.walk(payload):
+        for name in names:
+            src = os.path.join(root, name)
+            rel = os.path.relpath(src, payload).replace(os.sep, "/")
+            if target:
+                rel = f"{target}/{rel}"
+            if _safe_rel_path(rel) and not rel.endswith(MONO_BACKUP_SUFFIX):
+                plan.append((rel, src))
+    backed_up = []
+    for rel, _src in plan:
+        dst = os.path.join(install_path, *rel.split("/"))
+        backup = dst + MONO_BACKUP_SUFFIX
+        if os.path.isfile(dst) and not os.path.isfile(backup):
+            try:
+                shutil.copy2(dst, backup)
+            except OSError as e:
+                return [], [], f"Could not back up {rel}: {e}"
+        if os.path.isfile(backup):
+            backed_up.append(rel)
+    files = []
+    for rel, src in plan:
+        dst = os.path.join(install_path, *rel.split("/"))
+        _makedirs_for(dst)
+        if os.path.isfile(dst):
+            os.remove(dst)
+        shutil.move(src, dst)
+        files.append(rel)
+    return files, backed_up, ""
+
+
+async def _install_generic(
+    scratch, archive_path, install_path, target, game_domain, mod_id,
+    file_id, file_name, mod_name, mod_version, page_version, record_source,
+    collection_slug,
+) -> dict:
+    target = (target or "").replace("\\", "/").strip().strip("/")
+    if target in (".",):
+        target = ""
+    if target and not _safe_rel_path(target):
+        _force_rmtree(scratch)
+        return {"ok": False, "error": f"Invalid target folder: {target}"}
+    _strip_archive_junk(scratch)
+    dest = os.path.join(install_path, *target.split("/")) if target else install_path
+    payload = _generic_payload_root(scratch, dest)
+    files, backed_up, err = await asyncio.to_thread(
+        _generic_merge, payload, install_path, target
+    )
+    _force_rmtree(scratch)
+    if err:
+        await _emit_progress(mod_id, "error", 0, "backup failed")
+        return {"ok": False, "error": err}
+    if not files:
+        return {"ok": False, "error": "Archive contained no files"}
+    try:
+        os.remove(archive_path)
+    except OSError:
+        pass
+    settings = _load_settings()
+    installed = settings.setdefault("installed", {}).setdefault(game_domain, {})
+    record_key = _safe_name(mod_name)
+    prev = installed.get(record_key) or {}
+    installed[record_key] = _merge_install_record(prev, {
+        "mod_id": mod_id,
+        "file_id": file_id,
+        "name": mod_name,
+        "version": mod_version,
+        "file_name": file_name,
+        "installed_at": int(time.time()),
+        "page_version": page_version,
+        "source": record_source,
+        "collection_slug": collection_slug,
+        "mode": "files",
+        "target": ".",
+        "files": files,
+        "mono_restore": sorted(set(prev.get("mono_restore") or []) | set(backed_up)),
+    })
+    _save_settings(settings)
+    decky.logger.info(
+        f"installed generic {mod_name!r}: {len(files)} file(s) into "
+        f"{target or '(game folder)'}, replaced {len(backed_up)}"
+    )
+    await _emit_progress(mod_id, "done", 100)
+    return {"ok": True, "folder": record_key}
+
+
+def _appmanifest_installdir(app_id: int) -> str:
+    """steamapps/common/<installdir> name for any installed Steam app."""
+    path = _find_in_libraries(f"appmanifest_{int(app_id)}.acf")
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m = re.search(r'"installdir"\s+"([^"]+)"', line, re.I)
+                if m:
+                    return m.group(1)
+    except (OSError, TypeError):
+        pass
+    return ""
+
+
 def _case_merge_rel(base: str, rel: str, cache=None) -> str:
     """Adopt the on-disk casing of every existing path component under base.
     Wine resolves an exact-case match before falling back to a scan, so twin
@@ -19873,6 +20003,43 @@ query Link($slug: String!, $domainName: String!) {
                 entries.append(parsed)
         return {"ok": True, "raw": lines[-10:], "entries": entries[-10:]}
 
+    # ---- Generic games ------------------------------------------------------
+
+    async def get_app_installdir(self, app_id: int) -> dict:
+        name = _appmanifest_installdir(app_id)
+        return {"ok": bool(name), "installdir": name}
+
+    _NEXUS_GAMES: list = []
+
+    async def search_nexus_games(self, query: str) -> dict:
+        """Nexus games whose name contains every word of the query."""
+        if not Plugin._NEXUS_GAMES:
+            api_key = _load_settings().get("api_key") or ""
+            try:
+                session = await _http_session()
+                async with session.get(
+                    f"{NEXUS_API_BASE}/v1/games.json",
+                    headers=_api_headers(api_key),
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    if resp.status != 200:
+                        return {"ok": False, "error": f"HTTP {resp.status}"}
+                    Plugin._NEXUS_GAMES = [
+                        {"domain": g.get("domain_name"), "name": g.get("name"),
+                         "mods": g.get("mods") or 0}
+                        for g in await resp.json()
+                        if g.get("domain_name") and g.get("name")
+                    ]
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        words = re.findall(r"[a-z0-9]+", (query or "").lower())
+        hits = [
+            g for g in Plugin._NEXUS_GAMES
+            if all(w in re.sub(r"[^a-z0-9 ]", "", g["name"].lower()) for w in words)
+        ]
+        hits.sort(key=lambda g: -g["mods"])
+        return {"ok": True, "games": hits[:15]}
+
     # ---- Debugging -----------------------------------------------------------
 
     async def get_debug_info(
@@ -20789,6 +20956,13 @@ query Link($slug: String!, $domainName: String!) {
                 scratch, mod_id, file_id, mod_name, mod_version, file_name,
                 install_dir, game_domain, page_version, record_source,
                 collection_slug, app_id,
+            )
+
+        if install_mode == "generic":
+            return await _install_generic(
+                scratch, archive_path, install_path, mods_subdir, game_domain,
+                mod_id, file_id, file_name, mod_name, mod_version,
+                page_version, record_source, collection_slug,
             )
 
         if install_mode == "dataDir":

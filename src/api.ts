@@ -15,7 +15,9 @@ export type InstallMode =
   | "bg3"
   /** Mass Effect Legendary Edition: ME3Tweaks moddesc packages for one of
    * three games under one app id. */
-  | "masseffect";
+  | "masseffect"
+  /** User-configured game: files merge into a chosen folder, see GenericSetup. */
+  | "generic";
 
 export interface NexusMod {
   modId: number;
@@ -1880,6 +1882,22 @@ export const getNxmQueue = callable<
   [clear: boolean],
   { ok: boolean; raw?: string[]; entries?: NxmEntry[]; error?: string }
 >("get_nxm_queue");
+
+export const getAppInstalldir = callable<
+  [app_id: number],
+  { ok: boolean; installdir: string }
+>("get_app_installdir");
+
+export interface NexusGameHit {
+  domain: string;
+  name: string;
+  mods: number;
+}
+
+export const searchNexusGames = callable<
+  [query: string],
+  { ok: boolean; games?: NexusGameHit[]; error?: string }
+>("search_nexus_games");
 
 export const checkDocsFile = callable<
   [app_id: number, subpath: string],

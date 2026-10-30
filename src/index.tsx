@@ -145,6 +145,7 @@ import {
   getSupportedGame,
   modeParams,
   noteActiveGame,
+  removeCustomGame,
   SupportedGame,
   UserTool,
 } from "./games";
@@ -185,6 +186,8 @@ interface GameContext {
   game?: SupportedGame;
   /** Display name of the unsupported context game, when running/viewing one. */
   unsupportedName?: string;
+  /** App id of that unsupported game, for generic setup. */
+  unsupportedAppId?: number;
   /** Names of supported games running simultaneously - ambiguous context. */
   multipleNames?: string[];
   /** True on neutral ground (home screen etc.) - no game context at all. */
@@ -222,10 +225,14 @@ function resolveGameContext(): GameContext {
         Router.MainRunningApp?.display_name ??
         getAppDisplayName(runningIds[0]) ??
         "This game",
+      unsupportedAppId: runningIds[0],
     };
   }
   if (viewedId !== undefined) {
-    return { unsupportedName: getAppDisplayName(viewedId) ?? "This game" };
+    return {
+      unsupportedName: getAppDisplayName(viewedId) ?? "This game",
+      unsupportedAppId: viewedId,
+    };
   }
   // Route glitch guard: some overlay states report no /library/app path
   // even though the user is sitting on a game's page - the scope used to
@@ -238,6 +245,7 @@ function resolveGameContext(): GameContext {
 }
 import { PANEL_TOP_CLASS, pushOurPage, resetTabStack } from "./Tabs";
 import { BrowsePage } from "./BrowsePage";
+import { GenericSetup } from "./GenericSetup";
 import { EndorsableFrameworkRow } from "./EndorseButton";
 import { CollectionPage } from "./CollectionPage";
 import { DownloadsPage } from "./DownloadsPage";
@@ -564,7 +572,10 @@ function ResetGameRow({
 }
 
 function CurrentGameSection() {
-  const { game, unsupportedName, multipleNames } = resolveGameContext();
+  const { game, unsupportedName, unsupportedAppId, multipleNames } =
+    resolveGameContext();
+  // Re-resolve after a generic setup is saved or removed.
+  const [, setSetupRev] = useState(0);
   const gameIsRunning = game ? isGameRunning(game.appId) : false;
 
   const [status, setStatus] = useState<GameStatus | undefined>();
@@ -1167,6 +1178,15 @@ function CurrentGameSection() {
         </PanelSection>
       );
     }
+    if (unsupportedName && unsupportedAppId !== undefined) {
+      return (
+        <GenericSetup
+          appId={unsupportedAppId}
+          name={unsupportedName}
+          onDone={() => setSetupRev((n) => n + 1)}
+        />
+      );
+    }
     if (unsupportedName) {
       // Running or viewing a game the plugin doesn't support: just say so.
       return (
@@ -1209,6 +1229,20 @@ function CurrentGameSection() {
           {gameIsRunning ? game.displayName : `${game.displayName} · not running`}
         </Field>
       </PanelSectionRow>
+      {game.installMode === "generic" && (
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            description={`Generic mode · mods go to ${game.genericTarget || "the game folder"}. Installed mods stay tracked.`}
+            onClick={() => {
+              removeCustomGame(game.appId);
+              setSetupRev((n) => n + 1);
+            }}
+          >
+            Change setup
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
       {game.underConstruction && (
         <PanelSectionRow>
           <Field label="🚧 Under construction">
