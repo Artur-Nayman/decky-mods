@@ -97,7 +97,7 @@ export function isNewerVersion(current: string, latest: string): boolean {
 export function trustedArtifact(url?: string): boolean {
   return Boolean(
     url?.startsWith(
-      "https://github.com/RedRanger14/decky-nexus/releases/download/"
+      "https://github.com/Artur-Nayman/decky-mods/releases/download/"
     )
   );
 }

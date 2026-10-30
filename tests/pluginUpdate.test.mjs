@@ -18,7 +18,7 @@ import {
   versionParts,
 } from "../.test-build/pluginUpdate.js";
 
-const REAL = "https://github.com/RedRanger14/decky-nexus/releases/download/v1.11.2/Nexus-Mods-1.11.2.zip";
+const REAL = "https://github.com/Artur-Nayman/decky-mods/releases/download/v1.11.2/Nexus-Mods-1.11.2.zip";
 
 function withRouter(fn, impl) {
   const prev = globalThis.window;
@@ -76,11 +76,11 @@ test("only this project's own release assets are trusted", () => {
   for (const bad of [
     undefined,
     "",
-    "http://github.com/RedRanger14/decky-nexus/releases/download/v1/x.zip",
+    "http://github.com/Artur-Nayman/decky-mods/releases/download/v1/x.zip",
     "https://example.com/Nexus-Mods-1.11.2.zip",
     "https://github.com/someoneelse/decky-nexus/releases/download/v1/x.zip",
-    "https://github.com/RedRanger14/decky-nexus/archive/main.zip",
-    "https://evil.invalid/#https://github.com/RedRanger14/decky-nexus/releases/download/",
+    "https://github.com/Artur-Nayman/decky-mods/archive/main.zip",
+    "https://evil.invalid/#https://github.com/Artur-Nayman/decky-mods/releases/download/",
   ]) {
     assert.equal(trustedArtifact(bad), false, String(bad));
   }

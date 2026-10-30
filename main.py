@@ -1804,8 +1804,8 @@ def _hd2_next_free_number(data_dir: str, archive_hash: str,
 #
 # This half only answers "is there a newer one, and what is its hash".
 # The frontend does the asking, because the loader's router lives there.
-PLUGIN_STORE_INDEX = ("https://raw.githubusercontent.com/RedRanger14/"
-                      "decky-nexus/main/store/plugins.json")
+PLUGIN_STORE_INDEX = ("https://raw.githubusercontent.com/Artur-Nayman/"
+                      "decky-mods/main/store/plugins.json")
 # A minute. Long enough that opening and closing the panel does not
 # refetch, short enough that the answer is effectively live.
 #
@@ -1859,8 +1859,8 @@ class _PluginUpdateCache:
 # the store index on raw.githubusercontent.com answered fine. A user
 # facing feature cannot sit on a budget that a phone on the same wifi
 # can exhaust.
-PLUGIN_NOTES_BASE = ("https://raw.githubusercontent.com/RedRanger14/"
-                     "decky-nexus/main/store/notes/")
+PLUGIN_NOTES_BASE = ("https://raw.githubusercontent.com/Artur-Nayman/"
+                     "decky-mods/main/store/notes/")
 
 
 _PLUGIN_NOTES_CACHE: dict = {}
@@ -1947,7 +1947,7 @@ async def _fetch_plugin_update(force: bool = False) -> dict:
     # An artifact served from anywhere else is not ours to install, and
     # the loader would happily fetch whatever it was handed.
     if out and not out["artifact"].startswith(
-            "https://github.com/RedRanger14/decky-nexus/releases/download/"):
+            "https://github.com/Artur-Nayman/decky-mods/releases/download/"):
         return {}
     _PluginUpdateCache.at = now
     _PluginUpdateCache.data = out
@@ -3833,7 +3833,7 @@ def _skyrim_cc_catalog_fix(app_id: int, install_path: str) -> str:
 #   - Compiling takes a couple of minutes and hundreds of MB, so it is worth
 #     saying so rather than looking hung.
 FROSTY_TOOLKIT_URL = (
-    "https://github.com/RedRanger14/decky-nexus/releases/download/"
+    "https://github.com/Artur-Nayman/decky-mods/releases/download/"
     "frosty-toolkit-2/frosty-toolkit-linux-x64.tar.gz"
 )
 FROSTY_TOOLKIT_SHA256 = (

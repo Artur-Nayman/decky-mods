@@ -14435,7 +14435,7 @@ class TestPluginSelfUpdate(unittest.TestCase):
         async def fake_index(force=False):
             calls.append(force)
             return {"version": "9.9.9", "hash": "h",
-                    "artifact": "https://github.com/RedRanger14/decky-nexus"
+                    "artifact": "https://github.com/Artur-Nayman/decky-mods"
                                 "/releases/download/v9.9.9/x.zip"}
 
         loop = asyncio.new_event_loop()

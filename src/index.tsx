@@ -4425,7 +4425,7 @@ function DevSection() {
               game.appId
             ).catch(() => undefined);
             Navigation.NavigateToExternalWeb(
-              "https://github.com/RedRanger14/decky-nexus/issues/new" +
+              "https://github.com/Artur-Nayman/decky-mods/issues/new" +
                 `?title=${encodeURIComponent(`[${game.displayName}] `)}` +
                 `&body=${encodeURIComponent(fitReportBody(r?.body ?? ""))}`
             );

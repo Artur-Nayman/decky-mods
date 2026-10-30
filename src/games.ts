@@ -1601,7 +1601,7 @@ export const SUPPORTED_GAMES: Record<number, SupportedGame> = {
     framework: {
       name: "Mod compiler",
       detectFile: "",
-      url: "github.com/RedRanger14/decky-nexus",
+      url: "github.com/Artur-Nayman/decky-mods",
       nexusModId: 0,
       installKind: "copyRoot",
     },

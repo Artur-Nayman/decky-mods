@@ -810,7 +810,7 @@ export default function HealthCheckPage() {
                 `[${game.displayName}] `
               );
               Navigation.NavigateToExternalWeb(
-                "https://github.com/RedRanger14/decky-nexus/issues/new" +
+                "https://github.com/Artur-Nayman/decky-mods/issues/new" +
                   `?title=${title}&body=${body}`
               );
             }}
